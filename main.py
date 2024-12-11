@@ -3,6 +3,7 @@ import numpy as np
 import re
 import nltk
 import time
+import os
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
@@ -15,7 +16,7 @@ import matplotlib.pyplot as plt
 
 def load_data(file_path):
 
-  df = pd.read_csv(file_path, on_bad_lines='skip')
+  df = pd.read_csv(file_path, nrows=10000, on_bad_lines='skip')
   df = df[['text']]
   df = df.drop_duplicates()
   df = df.dropna()
@@ -76,6 +77,7 @@ def train_test_models(x_train, y_train, x_test, y_test):
   Prints out the results (and the training time).
   ---
   returns: results - dict {string: float} - the models and their accuracies on the test set.
+           best_model - scikit-learn model - the best model between KNN, SVM, and RF
   """
 
   models = {
@@ -84,7 +86,11 @@ def train_test_models(x_train, y_train, x_test, y_test):
       'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42)
   }
 
+  # Holds accuracy results
   results = {}
+  # Checks for the best performing model
+  best_accuracy = 0
+  best_model = None
 
   # Train the models, then evaluate their accuracy
   for name, model in models.items():
@@ -101,6 +107,32 @@ def train_test_models(x_train, y_train, x_test, y_test):
     print(f"{name} Accuracy: {accuracy:.3f}\n")
 
     results[name] = accuracy
+    # Check for best model
+    if accuracy > best_accuracy:
+      best_accuracy = accuracy
+      best_model = model
+
+  return results, best_model
+
+
+def predict_sentiment_data(model, vectorizer, data_list):
+  """
+  Predicts sentiment values for a list of data files using a given model.
+  Vectorizer will apply transform on the unseen data for predictions.
+  ---
+  returns: results - list (string, float) - the files and their predicted average sentiments.
+  """
+
+  results = []
+
+  for data_file in data_list:
+    # Load in the data, clean it, then predict its sentiment
+    df = load_data(data_file)
+    df['text'] = df['text'].apply(clean_text)
+    # Since the data is an unseen 'test' set, transform only for seen words
+    X = vectorizer.transform(df["text"])
+    predictions = model.predict(X)
+    results.append((data_file, np.mean(predictions)))
 
   return results
 
@@ -124,31 +156,66 @@ def plot_model_accuracy(model_accuracies, output_file_path):
     plt.savefig(output_file_path)
 
 
-# Graphing Sentiment Trends Between Two Points
-def plot_sentiment_trends(df, start_index, end_index, output_file_path):
-    # Filter data
-    subset = df.iloc[start_index:end_index]
+# Graphing Sentiment Trends
+def plot_sentiment_trends(dates, sentiments, output_file_path):
+    # Get data, organized as (data_file, average sentiment)
+    start_date = dates[0]
+    end_date = dates[-1]
 
     plt.figure(figsize=(10, 6))
-    plt.plot(subset.index, subset['compound_sentiment'], marker='o', color='darkblue', label='Compound Sentiment')
+    plt.plot(dates, sentiments, marker='o', color='darkblue', label='Average Compound Sentiment')
     plt.axhline(0.05, color='green', linestyle='--', label='Positive Threshold')
     plt.axhline(-0.05, color='red', linestyle='--', label='Negative Threshold')
-    plt.title(f'Sentiment Trends from Index {start_index} to {end_index}')
-    plt.xlabel('Index')
-    plt.ylabel('Compound Sentiment')
+    plt.title(f'Sentiment Trends from {start_date} to {end_date}')
+    plt.xlabel('Date')
+    plt.ylabel('Average Compound Sentiment')
     plt.legend()
     plt.savefig(output_file_path)
 
 
 nltk.downloader.download('vader_lexicon')
 
-input_file_path = "./data/08-19-2022.csv"
-# output_file_path = "/res/08-19-2022.csv"
+"""========================INPUT DATA HERE========================"""
+# Load in the training and testing data
+data_file_path = "./data/"
+training_file_path = data_file_path + "08-19-2022.csv"
+
+# Set the files for sentiment analysis; first the starting set, then the ending set for comparison
+sentiment_files_start = [
+  "03-01-2022.csv",
+  "03-02-2022.csv",
+  "03-03-2022.csv",
+  "03-04-2022.csv",
+  "03-05-2022.csv",
+  "03-06-2022.csv",
+  "03-07-2022.csv"
+]
+sentiment_files_end = [
+  "06-01-2023.csv",
+  "06-02-2023.csv",
+  "06-03-2023.csv",
+  "06-04-2023.csv",
+  "06-05-2023.csv",
+  "06-06-2023.csv",
+  "06-07-2023.csv"
+]
+
+# Add the data filepath to the specified sentiment data files
+sentiment_data_start = [data_file_path + date_string for date_string in sentiment_files_start]
+sentiment_data_end = [data_file_path + date_string for date_string in sentiment_files_end]
+"""========================INPUT DATA HERE========================"""
+
+"""========================OUTPUT DATA HERE========================"""
+# training_output_path = "/res/08-19-2022.csv"
+# Plot output files
 plots_file_path = "./res/"
 model_results_file = plots_file_path + 'ModelResults.png'
-sentiment_trends_file = plots_file_path + 'SentimentTrends.png'
+sentiment_trends_start = plots_file_path + 'SentimentTrendsStart.png'
+sentiment_trends_end = plots_file_path + 'SentimentTrendsEnd.png'
+"""========================OUTPUT DATA HERE========================"""
 
-df = load_data(input_file_path)
+
+df = load_data(training_file_path)
 df['text'] = df['text'].apply(clean_text)
 
 start = time.time()
@@ -163,7 +230,7 @@ df = df.drop(df[df['compound_sentiment'] == 0.0].index)
 #       this is a destructive method of circumventing that by removing all 0.0000 tweets
 #       it is expected that the information loss is minimal considering the rarity of exact 0.0000 scores
 
-# df.to_csv(output_file_path, index=False)
+# df.to_csv(training_output_path, index=False)
 
 # Vectorize the text, then train and test the models
 vectorizer = TfidfVectorizer()
@@ -171,10 +238,24 @@ X = vectorizer.fit_transform(df["text"])
 Y = df["sentiment_category"].map({"Positive": 1, "Neutral": 0, "Negative": -1})
 
 x_train, x_test, y_train, y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
-model_accuracies = train_test_models(x_train, y_train, x_test, y_test)
+model_accuracies, best_model = train_test_models(x_train, y_train, x_test, y_test)
+
+
+# Predict the values for the rest of the data using the best performing model
+start_sentiments = predict_sentiment_data(best_model, vectorizer, sentiment_data_start)
+end_sentiments = predict_sentiment_data(best_model, vectorizer, sentiment_data_end)
+
 
 # Plot Model Accuracy Comparison
 plot_model_accuracy(model_accuracies, model_results_file)
 
-# Plot Sentiment Trends (Example: between indices 0 and 100)
-plot_sentiment_trends(df, start_index=0, end_index=100, output_file_path=sentiment_trends_file)
+# Get the dates for plotting
+start_dates = [os.path.splitext(data_file_path)[0] for data_file_path in sentiment_files_start]
+end_dates = [os.path.splitext(data_file_path)[0] for data_file_path in sentiment_files_end]
+# Get the sentiments for plotting
+start_avg_sentiments = [tup[1] for tup in start_sentiments]
+end_avg_sentiments = [tup[1] for tup in end_sentiments]
+
+# Plot Sentiment Trends
+plot_sentiment_trends(start_dates, start_avg_sentiments, output_file_path=sentiment_trends_start)
+plot_sentiment_trends(end_dates, end_avg_sentiments, output_file_path=sentiment_trends_end)
