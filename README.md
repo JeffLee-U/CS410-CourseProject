@@ -7,6 +7,10 @@
 ---
 This project analyzes changes in user engagement and online sentiment regarding the Russo-Ukrainian War using Twitter data from March 2022, and June 2023 1. Sentiment values are generated during preprocessing with VADER[2], a sentiment analysis tool tailored for social media. Multiple scikit-learn models, including K-Nearest Neighbors, Support Vector Machines, and Random Forest, are trained and compared for accuracy against VADER's sentiment scores to select the best-performing model. The chosen model is then used to analyze sentiment trends over time, offering insights into shifts in public perception and online engagement during the war. The focus is on understanding online habits rather than the conflict itself.
 
+Dataset Used: [Ukraine Conflict Twitter Dataset](https://www.kaggle.com/datasets/bwandowando/ukraine-russian-crisis-twitter-dataset-1-2-m-rows)
+
+VADER GitHub: [Link](https://github.com/cjhutto/vaderSentiment)
+
 
 #### How to use the software:
 ---
